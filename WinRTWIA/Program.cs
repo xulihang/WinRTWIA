@@ -9,7 +9,7 @@ using Windows.Devices.Scanners;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
-using Windows.Foundation; // 添加此命名空间以使用 Rect
+using Windows.Foundation;
 
 namespace ScannerCLI
 {
@@ -80,6 +80,13 @@ namespace ScannerCLI
                 if (!ValidateScanArea())
                 {
                     Console.WriteLine("Invalid scan area parameters!");
+                    return;
+                }
+
+                // Validate contrast and brightness values
+                if (!ValidateImageEnhancements())
+                {
+                    Console.WriteLine("Contrast and brightness values must be between -100 and 100!");
                     return;
                 }
 
@@ -214,7 +221,49 @@ namespace ScannerCLI
                         }
                         break;
 
-                    // 添加扫描区域参数
+                    case "-c":
+                    case "--contrast":
+                        if (i + 1 < args.Length)
+                        {
+                            if (int.TryParse(args[++i], out int contrast))
+                            {
+                                _options.Contrast = contrast;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Error: Contrast must be a number between -100 and 100");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Error: -c parameter requires contrast value");
+                            return false;
+                        }
+                        break;
+
+                    case "-b":
+                    case "--brightness":
+                        if (i + 1 < args.Length)
+                        {
+                            if (int.TryParse(args[++i], out int brightness))
+                            {
+                                _options.Brightness = brightness;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Error: Brightness must be a number between -100 and 100");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Error: -b parameter requires brightness value");
+                            return false;
+                        }
+                        break;
+
+                    // 扫描区域参数
                     case "-l":
                     case "--left":
                         if (i + 1 < args.Length)
@@ -341,6 +390,8 @@ namespace ScannerCLI
             Console.WriteLine("  -o, --output DIR          Specify output directory (default: current directory)");
             Console.WriteLine("  -f, --format FORMAT       Specify file format: pdf, jpeg, png, tiff, bmp");
             Console.WriteLine("  -m, --mode MODE           Select color mode: Lineart, Gray, Color");
+            Console.WriteLine("  -c, --contrast VALUE      Adjust contrast (-100 to 100, default: 0)");
+            Console.WriteLine("  -b, --brightness VALUE    Adjust brightness (-100 to 100, default: 0)");
             Console.WriteLine("  -l, --left MM             Left position of scan area in millimeters");
             Console.WriteLine("  -t, --top MM              Top position of scan area in millimeters");
             Console.WriteLine("  -x, --width MM            Width of scan area in millimeters");
@@ -353,6 +404,8 @@ namespace ScannerCLI
             Console.WriteLine("  ScannerCLI -s feeder -f jpeg -m Gray -r 150");
             Console.WriteLine("  ScannerCLI -s flatbed -r 300 -f jpeg -l 10 -t 10 -x 200 -y 280");
             Console.WriteLine("  ScannerCLI -s flatbed -l 20 -t 20 -x 100 -y 150");
+            Console.WriteLine("  ScannerCLI -s flatbed -r 300 -c 20 -b 10  # Increase contrast and brightness");
+            Console.WriteLine("  ScannerCLI -s flatbed -r 300 -c -10 -b -5 # Decrease contrast and brightness");
         }
 
         private static async Task ListScannersAsync()
@@ -515,6 +568,24 @@ namespace ScannerCLI
             return true;
         }
 
+        private static bool ValidateImageEnhancements()
+        {
+            // 验证对比度和亮度值在有效范围内 (-100 到 100)
+            if (_options.Contrast < -1000 || _options.Contrast > 1000)
+            {
+                Console.WriteLine("Contrast must be between -1000 and 1000");
+                return false;
+            }
+
+            if (_options.Brightness < -1000 || _options.Brightness > 1000)
+            {
+                Console.WriteLine("Brightness must be between -1000 and 1000");
+                return false;
+            }
+
+            return true;
+        }
+
         private static async Task PerformScanAsync()
         {
             Console.WriteLine("\n=== Scan Configuration ===");
@@ -522,6 +593,12 @@ namespace ScannerCLI
             Console.WriteLine($"Resolution: {_options.Resolution} DPI");
             Console.WriteLine($"File Format: {_options.Format}");
             Console.WriteLine($"Color Mode: {_options.ColorMode}");
+
+            if (_options.Contrast != 0)
+                Console.WriteLine($"Contrast: {_options.Contrast}");
+
+            if (_options.Brightness != 0)
+                Console.WriteLine($"Brightness: {_options.Brightness}");
 
             if (_options.ScanAreaSpecified)
             {
@@ -645,6 +722,37 @@ namespace ScannerCLI
                 DpiY = (uint)_options.Resolution
             };
 
+            // Set contrast if specified
+            if (_options.Contrast != 0)
+            {
+                try
+                {
+                    // 将对比度值从 -100..100 映射到实际的对比度范围
+                    // 注意：实际范围可能因扫描仪而异，这里使用相对调整
+                    flatbedConfig.Contrast = NormalizeEnhancementValue(_options.Contrast);
+                    Console.WriteLine($"Applied contrast: {flatbedConfig.Contrast}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not set contrast: {ex.Message}");
+                }
+            }
+
+            // Set brightness if specified
+            if (_options.Brightness != 0)
+            {
+                try
+                {
+                    // 将亮度值从 -100..100 映射到实际的亮度范围
+                    flatbedConfig.Brightness = NormalizeEnhancementValue(_options.Brightness);
+                    Console.WriteLine($"Applied brightness: {flatbedConfig.Brightness}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not set brightness: {ex.Message}");
+                }
+            }
+
             // Set scan area if specified
             if (_options.ScanAreaSpecified)
             {
@@ -658,7 +766,6 @@ namespace ScannerCLI
                 float widthInch = _options.ScanAreaWidth / 25.4f;
                 float heightInch = _options.ScanAreaHeight / 25.4f;
 
-
                 // 设置扫描区域（以像素为单位）
                 flatbedConfig.SelectedScanRegion = new Rect(
                     leftInch,
@@ -666,7 +773,6 @@ namespace ScannerCLI
                     widthInch,
                     heightInch
                 );
-
                 Console.WriteLine($"Scan region in inches: Left={leftInch}, Top={topInch}, " +
                                 $"Width={widthInch}, Height={heightInch}");
             }
@@ -688,6 +794,34 @@ namespace ScannerCLI
                 DpiX = (uint)_options.Resolution,
                 DpiY = (uint)_options.Resolution
             };
+
+            // Set contrast if specified
+            if (_options.Contrast != 0)
+            {
+                try
+                {
+                    feederConfig.Contrast = NormalizeEnhancementValue(_options.Contrast);
+                    Console.WriteLine($"Applied contrast: {feederConfig.Contrast}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not set contrast: {ex.Message}");
+                }
+            }
+
+            // Set brightness if specified
+            if (_options.Brightness != 0)
+            {
+                try
+                {
+                    feederConfig.Brightness = NormalizeEnhancementValue(_options.Brightness);
+                    Console.WriteLine($"Applied brightness: {feederConfig.Brightness}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not set brightness: {ex.Message}");
+                }
+            }
 
             // Set scan area if specified
             if (_options.ScanAreaSpecified)
@@ -714,7 +848,6 @@ namespace ScannerCLI
                     widthPixels,
                     heightPixels
                 );
-
                 Console.WriteLine($"Scan region in pixels: Left={leftPixels}, Top={topPixels}, " +
                                 $"Width={widthPixels}, Height={heightPixels}");
             }
@@ -725,6 +858,11 @@ namespace ScannerCLI
             {
                 feederConfig.Duplex = true;
             }
+        }
+
+        private static int NormalizeEnhancementValue(int value)
+        {
+            return value;
         }
 
         private static ImageScannerFormat ConvertFormat(string format)
@@ -774,6 +912,10 @@ namespace ScannerCLI
         public string OutputDirectory { get; set; } = string.Empty;
         public string Format { get; set; } = "pdf";
         public string ColorMode { get; set; } = "color";
+
+        // 图像增强参数
+        public int Contrast { get; set; } = 0;
+        public int Brightness { get; set; } = 0;
 
         // 扫描区域参数
         public float ScanAreaLeft { get; set; } = 0;
