@@ -119,7 +119,9 @@ namespace ScannerCLI
                     case "--list":
                         _options.ListDevices = true;
                         break;
-
+                    case "--duplex":
+                        _options.Duplex = true;
+                        break;
                     case "-d":
                     case "--device":
                         if (i + 1 < args.Length)
@@ -901,7 +903,7 @@ namespace ScannerCLI
             feederConfig.MaxNumberOfPages = 0; // 0 means scan all available pages
             if (feederConfig.CanScanDuplex)
             {
-                feederConfig.Duplex = true;
+                feederConfig.Duplex = _options.Duplex;
             }
         }
 
@@ -957,7 +959,7 @@ namespace ScannerCLI
         public string OutputDirectory { get; set; } = string.Empty;
         public string Format { get; set; } = "pdf";
         public string ColorMode { get; set; } = "color";
-
+        public bool Duplex { get; set; } = false;
         // 图像增强参数
         public int Contrast { get; set; } = 0;
         public int Brightness { get; set; } = 0;
