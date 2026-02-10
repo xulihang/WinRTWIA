@@ -9,6 +9,7 @@ using Windows.Devices.Scanners;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
+using Windows.Foundation; // 添加此命名空间以使用 Rect
 
 namespace ScannerCLI
 {
@@ -72,6 +73,13 @@ namespace ScannerCLI
                 if (!ValidateResolution())
                 {
                     Console.WriteLine("Resolution must be between 50-1200 DPI!");
+                    return;
+                }
+
+                // Validate scan area
+                if (!ValidateScanArea())
+                {
+                    Console.WriteLine("Invalid scan area parameters!");
                     return;
                 }
 
@@ -206,6 +214,95 @@ namespace ScannerCLI
                         }
                         break;
 
+                    // 添加扫描区域参数
+                    case "-l":
+                    case "--left":
+                        if (i + 1 < args.Length)
+                        {
+                            if (float.TryParse(args[++i], out float left))
+                            {
+                                _options.ScanAreaLeft = left;
+                                _options.ScanAreaSpecified = true;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Error: Left position must be a number (millimeters)");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Error: -l parameter requires left position value");
+                            return false;
+                        }
+                        break;
+
+                    case "-t":
+                    case "--top":
+                        if (i + 1 < args.Length)
+                        {
+                            if (float.TryParse(args[++i], out float top))
+                            {
+                                _options.ScanAreaTop = top;
+                                _options.ScanAreaSpecified = true;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Error: Top position must be a number (millimeters)");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Error: -t parameter requires top position value");
+                            return false;
+                        }
+                        break;
+
+                    case "-x":
+                    case "--width":
+                        if (i + 1 < args.Length)
+                        {
+                            if (float.TryParse(args[++i], out float width))
+                            {
+                                _options.ScanAreaWidth = width;
+                                _options.ScanAreaSpecified = true;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Error: Width must be a number (millimeters)");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Error: -x parameter requires width value");
+                            return false;
+                        }
+                        break;
+
+                    case "-y":
+                    case "--height":
+                        if (i + 1 < args.Length)
+                        {
+                            if (float.TryParse(args[++i], out float height))
+                            {
+                                _options.ScanAreaHeight = height;
+                                _options.ScanAreaSpecified = true;
+                            }
+                            else
+                            {
+                                Console.WriteLine("Error: Height must be a number (millimeters)");
+                                return false;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Error: -y parameter requires height value");
+                            return false;
+                        }
+                        break;
+
                     case "-h":
                     case "--help":
                         ShowHelp();
@@ -244,12 +341,18 @@ namespace ScannerCLI
             Console.WriteLine("  -o, --output DIR          Specify output directory (default: current directory)");
             Console.WriteLine("  -f, --format FORMAT       Specify file format: pdf, jpeg, png, tiff, bmp");
             Console.WriteLine("  -m, --mode MODE           Select color mode: Lineart, Gray, Color");
+            Console.WriteLine("  -l, --left MM             Left position of scan area in millimeters");
+            Console.WriteLine("  -t, --top MM              Top position of scan area in millimeters");
+            Console.WriteLine("  -x, --width MM            Width of scan area in millimeters");
+            Console.WriteLine("  -y, --height MM           Height of scan area in millimeters");
             Console.WriteLine("  -h, --help                Show this help message");
             Console.WriteLine();
             Console.WriteLine("Examples:");
             Console.WriteLine("  ScannerCLI -L");
             Console.WriteLine("  ScannerCLI -d \"HP Scanner\" -s flatbed -r 300 -f pdf -m Color -o C:\\Scans");
             Console.WriteLine("  ScannerCLI -s feeder -f jpeg -m Gray -r 150");
+            Console.WriteLine("  ScannerCLI -s flatbed -r 300 -f jpeg -l 10 -t 10 -x 200 -y 280");
+            Console.WriteLine("  ScannerCLI -s flatbed -l 20 -t 20 -x 100 -y 150");
         }
 
         private static async Task ListScannersAsync()
@@ -390,6 +493,28 @@ namespace ScannerCLI
             return _options.Resolution >= 50 && _options.Resolution <= 1200;
         }
 
+        private static bool ValidateScanArea()
+        {
+            // 如果没有指定扫描区域，则使用默认（整个扫描区域）
+            if (!_options.ScanAreaSpecified)
+                return true;
+
+            // 检查是否所有四个参数都已指定
+            if (_options.ScanAreaLeft < 0 || _options.ScanAreaTop < 0)
+            {
+                Console.WriteLine("Left and top positions must be >= 0");
+                return false;
+            }
+
+            if (_options.ScanAreaWidth <= 0 || _options.ScanAreaHeight <= 0)
+            {
+                Console.WriteLine("Width and height must be > 0");
+                return false;
+            }
+
+            return true;
+        }
+
         private static async Task PerformScanAsync()
         {
             Console.WriteLine("\n=== Scan Configuration ===");
@@ -397,6 +522,16 @@ namespace ScannerCLI
             Console.WriteLine($"Resolution: {_options.Resolution} DPI");
             Console.WriteLine($"File Format: {_options.Format}");
             Console.WriteLine($"Color Mode: {_options.ColorMode}");
+
+            if (_options.ScanAreaSpecified)
+            {
+                Console.WriteLine($"Scan Area: Left={_options.ScanAreaLeft}mm, Top={_options.ScanAreaTop}mm, " +
+                                  $"Width={_options.ScanAreaWidth}mm, Height={_options.ScanAreaHeight}mm");
+            }
+            else
+            {
+                Console.WriteLine($"Scan Area: Full scan bed");
+            }
 
             if (!string.IsNullOrEmpty(_options.OutputDirectory))
                 Console.WriteLine($"Output Directory: {_options.OutputDirectory}");
@@ -509,6 +644,32 @@ namespace ScannerCLI
                 DpiX = (uint)_options.Resolution,
                 DpiY = (uint)_options.Resolution
             };
+
+            // Set scan area if specified
+            if (_options.ScanAreaSpecified)
+            {
+                // 将毫米转换为英寸（1英寸 = 25.4毫米）
+                float dpiX = _options.Resolution;
+                float dpiY = _options.Resolution;
+
+                // 计算像素值：毫米 * DPI / 25.4
+                float leftInch = _options.ScanAreaLeft / 25.4f;
+                float topInch = _options.ScanAreaTop / 25.4f;
+                float widthInch = _options.ScanAreaWidth / 25.4f;
+                float heightInch = _options.ScanAreaHeight / 25.4f;
+
+
+                // 设置扫描区域（以像素为单位）
+                flatbedConfig.SelectedScanRegion = new Rect(
+                    leftInch,
+                    topInch,
+                    widthInch,
+                    heightInch
+                );
+
+                Console.WriteLine($"Scan region in inches: Left={leftInch}, Top={topInch}, " +
+                                $"Width={widthInch}, Height={heightInch}");
+            }
         }
 
         private static void ConfigureFeeder()
@@ -528,13 +689,42 @@ namespace ScannerCLI
                 DpiY = (uint)_options.Resolution
             };
 
+            // Set scan area if specified
+            if (_options.ScanAreaSpecified)
+            {
+                // 将毫米转换为英寸（1英寸 = 25.4毫米）
+                float dpiX = _options.Resolution;
+                float dpiY = _options.Resolution;
+
+                // 计算像素值：毫米 * DPI / 25.4
+                float leftInch = _options.ScanAreaLeft / 25.4f;
+                float topInch = _options.ScanAreaTop / 25.4f;
+                float widthInch = _options.ScanAreaWidth / 25.4f;
+                float heightInch = _options.ScanAreaHeight / 25.4f;
+
+                uint leftPixels = (uint)(leftInch * dpiX);
+                uint topPixels = (uint)(topInch * dpiY);
+                uint widthPixels = (uint)(widthInch * dpiX);
+                uint heightPixels = (uint)(heightInch * dpiY);
+
+                // 设置扫描区域（以像素为单位）
+                feederConfig.SelectedScanRegion = new Rect(
+                    leftPixels,
+                    topPixels,
+                    widthPixels,
+                    heightPixels
+                );
+
+                Console.WriteLine($"Scan region in pixels: Left={leftPixels}, Top={topPixels}, " +
+                                $"Width={widthPixels}, Height={heightPixels}");
+            }
+
             // Enable multi-page scanning
             feederConfig.MaxNumberOfPages = 0; // 0 means scan all available pages
             if (feederConfig.CanScanDuplex)
             {
                 feederConfig.Duplex = true;
             }
-
         }
 
         private static ImageScannerFormat ConvertFormat(string format)
@@ -584,5 +774,12 @@ namespace ScannerCLI
         public string OutputDirectory { get; set; } = string.Empty;
         public string Format { get; set; } = "pdf";
         public string ColorMode { get; set; } = "color";
+
+        // 扫描区域参数
+        public float ScanAreaLeft { get; set; } = 0;
+        public float ScanAreaTop { get; set; } = 0;
+        public float ScanAreaWidth { get; set; } = 0;
+        public float ScanAreaHeight { get; set; } = 0;
+        public bool ScanAreaSpecified { get; set; } = false;
     }
 }
