@@ -193,7 +193,7 @@ namespace ScannerCLI
                         if (i + 1 < args.Length)
                         {
                             _options.ColorMode = args[++i].ToLower();
-                            if (!new[] { "lineart", "gray", "color" }.Contains(_options.ColorMode))
+                            if (!new[] { "lineart", "grayscale", "color" }.Contains(_options.ColorMode))
                             {
                                 Console.WriteLine("错误: 不支持的颜色模式");
                                 return false;
@@ -555,7 +555,7 @@ namespace ScannerCLI
             return mode.ToLower() switch
             {
                 "lineart" => ImageScannerColorMode.Monochrome,
-                "gray" => ImageScannerColorMode.Grayscale,
+                "grayscale" => ImageScannerColorMode.Grayscale,
                 "color" => ImageScannerColorMode.Color,
                 _ => ImageScannerColorMode.Color
             };
