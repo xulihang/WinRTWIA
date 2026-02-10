@@ -22,28 +22,28 @@ namespace ScannerCLI
         {
             try
             {
-                // 解析命令行参数
+                // Parse command line arguments
                 if (!ParseArguments(args))
                 {
                     ShowHelp();
                     return;
                 }
 
-                // 如果指定列出设备
+                // If listing devices is specified
                 if (_options.ListDevices)
                 {
                     await ListScannersAsync();
                     return;
                 }
 
-                // 查找扫描仪
+                // Find scanner
                 ImageScanner scanner;
                 if (!string.IsNullOrEmpty(_options.DeviceName))
                 {
                     scanner = await FindScannerByNameAsync(_options.DeviceName);
                     if (scanner == null)
                     {
-                        Console.WriteLine($"未找到名为 '{_options.DeviceName}' 的扫描仪设备!");
+                        Console.WriteLine($"Scanner device with name '{_options.DeviceName}' not found!");
                         return;
                     }
                 }
@@ -52,38 +52,38 @@ namespace ScannerCLI
                     scanner = await FindFirstScannerAsync();
                     if (scanner == null)
                     {
-                        Console.WriteLine("未找到WIA兼容扫描仪!");
-                        Console.WriteLine("请确保扫描仪已连接并开启。");
+                        Console.WriteLine("No WIA-compatible scanner found!");
+                        Console.WriteLine("Please ensure the scanner is connected and powered on.");
                         return;
                     }
                 }
 
                 _scanner = scanner;
 
-                // 验证扫描源是否支持
+                // Validate if scan source is supported
                 if (!ValidateScanSource())
                 {
-                    Console.WriteLine($"扫描仪不支持 '{_options.Source}' 扫描源!");
+                    Console.WriteLine($"Scanner does not support '{_options.Source}' scan source!");
                     await DisplayScannerInfoAsync();
                     return;
                 }
 
-                // 验证分辨率
+                // Validate resolution
                 if (!ValidateResolution())
                 {
-                    Console.WriteLine("分辨率必须在 50-1200 DPI 之间!");
+                    Console.WriteLine("Resolution must be between 50-1200 DPI!");
                     return;
                 }
 
-                // 执行扫描
+                // Perform scan
                 await PerformScanAsync();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"错误: {ex.Message}");
+                Console.WriteLine($"Error: {ex.Message}");
                 if (ex.InnerException != null)
                 {
-                    Console.WriteLine($"内部错误: {ex.InnerException.Message}");
+                    Console.WriteLine($"Inner error: {ex.InnerException.Message}");
                 }
             }
         }
@@ -113,7 +113,7 @@ namespace ScannerCLI
                         }
                         else
                         {
-                            Console.WriteLine("错误: -d 参数需要设备名称");
+                            Console.WriteLine("Error: -d parameter requires device name");
                             return false;
                         }
                         break;
@@ -128,13 +128,13 @@ namespace ScannerCLI
                             }
                             else
                             {
-                                Console.WriteLine("错误: 分辨率必须是数字");
+                                Console.WriteLine("Error: Resolution must be a number");
                                 return false;
                             }
                         }
                         else
                         {
-                            Console.WriteLine("错误: -r 参数需要分辨率值");
+                            Console.WriteLine("Error: -r parameter requires resolution value");
                             return false;
                         }
                         break;
@@ -146,13 +146,13 @@ namespace ScannerCLI
                             _options.Source = args[++i].ToLower();
                             if (_options.Source != "flatbed" && _options.Source != "feeder")
                             {
-                                Console.WriteLine("错误: 扫描源必须是 'flatbed' 或 'feeder'");
+                                Console.WriteLine("Error: Scan source must be 'flatbed' or 'feeder'");
                                 return false;
                             }
                         }
                         else
                         {
-                            Console.WriteLine("错误: -s 参数需要扫描源");
+                            Console.WriteLine("Error: -s parameter requires scan source");
                             return false;
                         }
                         break;
@@ -165,7 +165,7 @@ namespace ScannerCLI
                         }
                         else
                         {
-                            Console.WriteLine("错误: -o 参数需要输出目录");
+                            Console.WriteLine("Error: -o parameter requires output directory");
                             return false;
                         }
                         break;
@@ -177,13 +177,13 @@ namespace ScannerCLI
                             _options.Format = args[++i].ToLower();
                             if (!new[] { "pdf", "jpeg", "jpg", "png", "tiff", "bmp" }.Contains(_options.Format))
                             {
-                                Console.WriteLine("错误: 不支持的文件格式");
+                                Console.WriteLine("Error: Unsupported file format");
                                 return false;
                             }
                         }
                         else
                         {
-                            Console.WriteLine("错误: -f 参数需要文件格式");
+                            Console.WriteLine("Error: -f parameter requires file format");
                             return false;
                         }
                         break;
@@ -195,13 +195,13 @@ namespace ScannerCLI
                             _options.ColorMode = args[++i].ToLower();
                             if (!new[] { "lineart", "grayscale", "color" }.Contains(_options.ColorMode))
                             {
-                                Console.WriteLine("错误: 不支持的颜色模式");
+                                Console.WriteLine("Error: Unsupported color mode");
                                 return false;
                             }
                         }
                         else
                         {
-                            Console.WriteLine("错误: -m 参数需要颜色模式");
+                            Console.WriteLine("Error: -m parameter requires color mode");
                             return false;
                         }
                         break;
@@ -212,18 +212,18 @@ namespace ScannerCLI
                         return false;
 
                     default:
-                        Console.WriteLine($"未知参数: {args[i]}");
+                        Console.WriteLine($"Unknown parameter: {args[i]}");
                         ShowHelp();
                         return false;
                 }
             }
 
-            // 验证必要参数（如果不是列出设备）
+            // Validate required parameters (if not listing devices)
             if (!_options.ListDevices)
             {
                 if (string.IsNullOrEmpty(_options.Source))
                 {
-                    Console.WriteLine("错误: 必须指定扫描源 (-s)");
+                    Console.WriteLine("Error: Must specify scan source (-s)");
                     return false;
                 }
             }
@@ -233,20 +233,20 @@ namespace ScannerCLI
 
         private static void ShowHelp()
         {
-            Console.WriteLine("扫描仪命令行工具");
-            Console.WriteLine("用法: ScannerCLI [选项]");
+            Console.WriteLine("Scanner Command Line Tool");
+            Console.WriteLine("Usage: ScannerCLI [options]");
             Console.WriteLine();
-            Console.WriteLine("选项:");
-            Console.WriteLine("  -L, --list                列出所有可用的扫描仪设备");
-            Console.WriteLine("  -d, --device NAME         通过名称指定要使用的扫描仪设备");
-            Console.WriteLine("  -r, --resolution DPI      指定扫描分辨率 (默认: 300)");
-            Console.WriteLine("  -s, --source SOURCE       选择扫描源: flatbed 或 feeder");
-            Console.WriteLine("  -o, --output DIR          指定输出目录 (默认: 当前目录)");
-            Console.WriteLine("  -f, --format FORMAT       指定文件格式: pdf, jpeg, png, tiff, bmp");
-            Console.WriteLine("  -m, --mode MODE           选择颜色模式: Lineart, Gray, Color");
-            Console.WriteLine("  -h, --help                显示此帮助信息");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  -L, --list                List all available scanner devices");
+            Console.WriteLine("  -d, --device NAME         Specify scanner device to use by name");
+            Console.WriteLine("  -r, --resolution DPI      Specify scan resolution (default: 300)");
+            Console.WriteLine("  -s, --source SOURCE       Select scan source: flatbed or feeder");
+            Console.WriteLine("  -o, --output DIR          Specify output directory (default: current directory)");
+            Console.WriteLine("  -f, --format FORMAT       Specify file format: pdf, jpeg, png, tiff, bmp");
+            Console.WriteLine("  -m, --mode MODE           Select color mode: Lineart, Gray, Color");
+            Console.WriteLine("  -h, --help                Show this help message");
             Console.WriteLine();
-            Console.WriteLine("示例:");
+            Console.WriteLine("Examples:");
             Console.WriteLine("  ScannerCLI -L");
             Console.WriteLine("  ScannerCLI -d \"HP Scanner\" -s flatbed -r 300 -f pdf -m Color -o C:\\Scans");
             Console.WriteLine("  ScannerCLI -s feeder -f jpeg -m Gray -r 150");
@@ -254,7 +254,7 @@ namespace ScannerCLI
 
         private static async Task ListScannersAsync()
         {
-            Console.WriteLine("正在查找扫描仪设备...\n");
+            Console.WriteLine("Searching for scanner devices...\n");
 
             try
             {
@@ -262,11 +262,11 @@ namespace ScannerCLI
 
                 if (deviceCollection.Count == 0)
                 {
-                    Console.WriteLine("未找到任何扫描仪设备。");
+                    Console.WriteLine("No scanner devices found.");
                     return;
                 }
 
-                Console.WriteLine($"找到 {deviceCollection.Count} 个设备:\n");
+                Console.WriteLine($"Found {deviceCollection.Count} device(s):\n");
 
                 for (int i = 0; i < deviceCollection.Count; i++)
                 {
@@ -277,18 +277,18 @@ namespace ScannerCLI
                     try
                     {
                         var scanner = await ImageScanner.FromIdAsync(device.Id);
-                        Console.WriteLine("  支持的扫描源:");
+                        Console.WriteLine("  Supported scan sources:");
 
                         if (scanner.IsScanSourceSupported(ImageScannerScanSource.Flatbed))
-                            Console.WriteLine("    - Flatbed (平板)");
+                            Console.WriteLine("    - Flatbed");
                         if (scanner.IsScanSourceSupported(ImageScannerScanSource.Feeder))
-                            Console.WriteLine("    - Feeder (进纸器)");
+                            Console.WriteLine("    - Feeder");
                         if (scanner.IsScanSourceSupported(ImageScannerScanSource.AutoConfigured))
-                            Console.WriteLine("    - Auto (自动)");
+                            Console.WriteLine("    - Auto");
                     }
                     catch
                     {
-                        Console.WriteLine("  无法获取设备详细信息");
+                        Console.WriteLine("  Unable to retrieve device details");
                     }
 
                     Console.WriteLine();
@@ -296,7 +296,7 @@ namespace ScannerCLI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"查找设备时出错: {ex.Message}");
+                Console.WriteLine($"Error while searching for devices: {ex.Message}");
             }
         }
 
@@ -316,7 +316,7 @@ namespace ScannerCLI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"查找扫描仪时出错: {ex.Message}");
+                Console.WriteLine($"Error finding scanner: {ex.Message}");
                 return null;
             }
         }
@@ -339,7 +339,7 @@ namespace ScannerCLI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"查找扫描仪时出错: {ex.Message}");
+                Console.WriteLine($"Error finding scanner: {ex.Message}");
                 return null;
             }
         }
@@ -348,29 +348,29 @@ namespace ScannerCLI
         {
             if (_scanner == null) return;
 
-            Console.WriteLine("\n=== 扫描仪信息 ===");
+            Console.WriteLine("\n=== Scanner Information ===");
 
             var deviceInfo = await DeviceInformation.CreateFromIdAsync(_scanner.DeviceId);
-            Console.WriteLine($"设备名称: {deviceInfo.Name}");
-            Console.WriteLine($"设备ID: {_scanner.DeviceId}");
-            Console.WriteLine("支持的扫描源:");
+            Console.WriteLine($"Device Name: {deviceInfo.Name}");
+            Console.WriteLine($"Device ID: {_scanner.DeviceId}");
+            Console.WriteLine("Supported scan sources:");
 
             if (_scanner.IsScanSourceSupported(ImageScannerScanSource.Flatbed))
-                Console.WriteLine("  - Flatbed (平板扫描)");
+                Console.WriteLine("  - Flatbed");
 
             if (_scanner.IsScanSourceSupported(ImageScannerScanSource.Feeder))
             {
-                Console.WriteLine("  - Feeder (自动进纸器)");
+                Console.WriteLine("  - Feeder");
                 var feederConfig = _scanner.FeederConfiguration;
                 if (feederConfig != null)
                 {
-                    Console.WriteLine($"    - 最大页数: {feederConfig.MaxNumberOfPages}");
-                    Console.WriteLine($"    - 支持双面扫描: {feederConfig.CanScanDuplex}");
+                    Console.WriteLine($"    - Max pages: {feederConfig.MaxNumberOfPages}");
+                    Console.WriteLine($"    - Supports duplex scanning: {feederConfig.CanScanDuplex}");
                 }
             }
 
             if (_scanner.IsScanSourceSupported(ImageScannerScanSource.AutoConfigured))
-                Console.WriteLine("  - AutoConfigured (自动配置)");
+                Console.WriteLine("  - AutoConfigured");
         }
 
         private static bool ValidateScanSource()
@@ -392,21 +392,21 @@ namespace ScannerCLI
 
         private static async Task PerformScanAsync()
         {
-            Console.WriteLine("\n=== 扫描配置 ===");
-            Console.WriteLine($"扫描源: {_options.Source}");
-            Console.WriteLine($"分辨率: {_options.Resolution} DPI");
-            Console.WriteLine($"文件格式: {_options.Format}");
-            Console.WriteLine($"颜色模式: {_options.ColorMode}");
+            Console.WriteLine("\n=== Scan Configuration ===");
+            Console.WriteLine($"Scan Source: {_options.Source}");
+            Console.WriteLine($"Resolution: {_options.Resolution} DPI");
+            Console.WriteLine($"File Format: {_options.Format}");
+            Console.WriteLine($"Color Mode: {_options.ColorMode}");
 
             if (!string.IsNullOrEmpty(_options.OutputDirectory))
-                Console.WriteLine($"输出目录: {_options.OutputDirectory}");
+                Console.WriteLine($"Output Directory: {_options.OutputDirectory}");
 
             Console.WriteLine();
 
-            // 配置扫描仪
+            // Configure scanner
             ConfigureScanner();
 
-            // 设置输出文件夹
+            // Set output folder
             StorageFolder outputFolder;
             if (string.IsNullOrEmpty(_options.OutputDirectory))
             {
@@ -420,17 +420,17 @@ namespace ScannerCLI
                 }
                 catch
                 {
-                    Console.WriteLine($"无法访问输出目录 '{_options.OutputDirectory}'，使用默认目录。");
+                    Console.WriteLine($"Cannot access output directory '{_options.OutputDirectory}', using default directory.");
                     outputFolder = ApplicationData.Current.LocalFolder;
                 }
             }
 
-            // 开始扫描
+            // Start scanning
             _cancellationTokenSource = new CancellationTokenSource();
 
             try
             {
-                Console.WriteLine("正在扫描...");
+                Console.WriteLine("Scanning...");
 
                 ImageScannerScanSource scanSource = _options.Source == "flatbed"
                     ? ImageScannerScanSource.Flatbed
@@ -438,7 +438,7 @@ namespace ScannerCLI
 
                 var progress = new Progress<uint>(pageCount =>
                 {
-                    Console.WriteLine($"已扫描 {pageCount} 页...");
+                    Console.WriteLine($"Scanned {pageCount} page(s)...");
                 });
 
                 var scanResult = await _scanner.ScanFilesToFolderAsync(
@@ -446,10 +446,10 @@ namespace ScannerCLI
                     outputFolder
                 ).AsTask(_cancellationTokenSource.Token, progress);
 
-                // 显示结果
+                // Display results
                 if (scanResult.ScannedFiles.Count > 0)
                 {
-                    Console.WriteLine($"\n扫描完成! 共扫描 {scanResult.ScannedFiles.Count} 页。");
+                    Console.WriteLine($"\nScan completed! Total {scanResult.ScannedFiles.Count} page(s) scanned.");
 
                     for (int i = 0; i < scanResult.ScannedFiles.Count; i++)
                     {
@@ -459,30 +459,30 @@ namespace ScannerCLI
                         try
                         {
                             var properties = await file.GetBasicPropertiesAsync();
-                            Console.WriteLine($"  大小: {FormatFileSize(properties.Size)}");
+                            Console.WriteLine($"  Size: {FormatFileSize(properties.Size)}");
                         }
                         catch { }
                     }
                 }
                 else
                 {
-                    Console.WriteLine("扫描完成，但未获得任何文件。");
+                    Console.WriteLine("Scan completed, but no files were obtained.");
                 }
             }
             catch (OperationCanceledException)
             {
-                Console.WriteLine("扫描已取消。");
+                Console.WriteLine("Scan cancelled.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"扫描失败: {ex.Message}");
+                Console.WriteLine($"Scan failed: {ex.Message}");
                 throw;
             }
         }
 
         private static void ConfigureScanner()
         {
-            // 设置扫描源
+            // Set scan source
             if (_options.Source == "flatbed")
             {
                 ConfigureFlatbed();
@@ -497,13 +497,13 @@ namespace ScannerCLI
         {
             var flatbedConfig = _scanner.FlatbedConfiguration;
 
-            // 设置文件格式
+            // Set file format
             flatbedConfig.Format = ConvertFormat(_options.Format);
 
-            // 设置颜色模式
+            // Set color mode
             flatbedConfig.ColorMode = ConvertColorMode(_options.ColorMode);
 
-            // 设置分辨率
+            // Set resolution
             flatbedConfig.DesiredResolution = new ImageScannerResolution
             {
                 DpiX = (uint)_options.Resolution,
@@ -515,26 +515,26 @@ namespace ScannerCLI
         {
             var feederConfig = _scanner.FeederConfiguration;
 
-            // 设置文件格式
+            // Set file format
             feederConfig.Format = ConvertFormat(_options.Format);
 
-            // 设置颜色模式
+            // Set color mode
             feederConfig.ColorMode = ConvertColorMode(_options.ColorMode);
 
-            // 设置分辨率
+            // Set resolution
             feederConfig.DesiredResolution = new ImageScannerResolution
             {
                 DpiX = (uint)_options.Resolution,
                 DpiY = (uint)_options.Resolution
             };
 
-            // 启用多页扫描
-            feederConfig.MaxNumberOfPages = 0; // 0 表示扫描所有可用页
+            // Enable multi-page scanning
+            feederConfig.MaxNumberOfPages = 0; // 0 means scan all available pages
             if (feederConfig.CanScanDuplex)
             {
                 feederConfig.Duplex = true;
             }
-            
+
         }
 
         private static ImageScannerFormat ConvertFormat(string format)
