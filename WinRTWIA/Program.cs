@@ -647,7 +647,7 @@ namespace ScannerCLI
                 ImageScannerScanSource scanSource = _options.Source == "flatbed"
                     ? ImageScannerScanSource.Flatbed
                     : ImageScannerScanSource.Feeder;
-
+                
                 var progress = new Progress<uint>(pageCount =>
                 {
                     Console.WriteLine($"Scanned {pageCount} page(s)...");
@@ -694,6 +694,7 @@ namespace ScannerCLI
 
         private static void ConfigureScanner()
         {
+            Console.WriteLine($"Configuring");
             // Set scan source
             if (_options.Source == "flatbed")
             {
@@ -703,24 +704,47 @@ namespace ScannerCLI
             {
                 ConfigureFeeder();
             }
+            Console.WriteLine($"Configure Done");
         }
 
         private static void ConfigureFlatbed()
         {
             var flatbedConfig = _scanner.FlatbedConfiguration;
-
+            Console.WriteLine("configure format");
             // Set file format
-            flatbedConfig.Format = ConvertFormat(_options.Format);
-
-            // Set color mode
-            flatbedConfig.ColorMode = ConvertColorMode(_options.ColorMode);
-
-            // Set resolution
-            flatbedConfig.DesiredResolution = new ImageScannerResolution
+            try
             {
-                DpiX = (uint)_options.Resolution,
-                DpiY = (uint)_options.Resolution
-            };
+                flatbedConfig.Format = ConvertFormat(_options.Format);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set format: {ex.Message}");
+                flatbedConfig.Format = ImageScannerFormat.DeviceIndependentBitmap;
+            }
+            Console.WriteLine("configure color");
+            // Set color mode
+            try
+            {
+                flatbedConfig.ColorMode = ConvertColorMode(_options.ColorMode);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set color mode: {ex.Message}");
+            }
+            Console.WriteLine("configure resolution");
+            // Set resolution
+            try
+            {
+                flatbedConfig.DesiredResolution = new ImageScannerResolution
+                {
+                    DpiX = (uint)_options.Resolution,
+                    DpiY = (uint)_options.Resolution
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set dpi: {ex.Message}");
+            }
 
             // Set contrast if specified
             if (_options.Contrast != 0)
@@ -781,19 +805,40 @@ namespace ScannerCLI
         private static void ConfigureFeeder()
         {
             var feederConfig = _scanner.FeederConfiguration;
-
+            Console.WriteLine("configure format");
             // Set file format
-            feederConfig.Format = ConvertFormat(_options.Format);
-
-            // Set color mode
-            feederConfig.ColorMode = ConvertColorMode(_options.ColorMode);
-
-            // Set resolution
-            feederConfig.DesiredResolution = new ImageScannerResolution
+            try
             {
-                DpiX = (uint)_options.Resolution,
-                DpiY = (uint)_options.Resolution
-            };
+                feederConfig.Format = ConvertFormat(_options.Format);
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set format: {ex.Message}");
+                feederConfig.Format = ImageScannerFormat.DeviceIndependentBitmap;
+            }
+            Console.WriteLine("configure color");
+            // Set color mode
+            try
+            {
+                feederConfig.ColorMode = ConvertColorMode(_options.ColorMode);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set color mode: {ex.Message}");
+            }
+            Console.WriteLine("configure resolution");
+            // Set resolution
+            try {
+                feederConfig.DesiredResolution = new ImageScannerResolution
+                {
+                    DpiX = (uint)_options.Resolution,
+                    DpiY = (uint)_options.Resolution
+                };
+            }
+            catch (Exception ex) {
+                Console.WriteLine($"Warning: Could not set dpi: {ex.Message}");
+            }
+            
 
             // Set contrast if specified
             if (_options.Contrast != 0)
@@ -874,7 +919,7 @@ namespace ScannerCLI
                 "png" => ImageScannerFormat.Png,
                 "tiff" => ImageScannerFormat.Tiff,
                 "bmp" => ImageScannerFormat.DeviceIndependentBitmap,
-                _ => ImageScannerFormat.Pdf
+                _ => ImageScannerFormat.DeviceIndependentBitmap
             };
         }
 
