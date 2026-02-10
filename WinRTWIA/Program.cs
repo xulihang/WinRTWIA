@@ -454,7 +454,7 @@ namespace ScannerCLI
                     for (int i = 0; i < scanResult.ScannedFiles.Count; i++)
                     {
                         var file = scanResult.ScannedFiles[i];
-                        Console.WriteLine($"文件 {i + 1}: {file.Name}");
+                        Console.WriteLine($"File {i + 1}: {file.Name}");
 
                         try
                         {
@@ -530,6 +530,11 @@ namespace ScannerCLI
 
             // 启用多页扫描
             feederConfig.MaxNumberOfPages = 0; // 0 表示扫描所有可用页
+            if (feederConfig.CanScanDuplex)
+            {
+                feederConfig.Duplex = true;
+            }
+            
         }
 
         private static ImageScannerFormat ConvertFormat(string format)
