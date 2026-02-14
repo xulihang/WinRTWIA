@@ -23,6 +23,8 @@ namespace ScannerCLI
         private static HandlerRoutine _consoleCtrlHandler;
         private static bool _isScanning = false;
         private static SemaphoreSlim _scanLock = new SemaphoreSlim(1, 1);
+        private static readonly string _cancelFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cancel");
+        private static FileSystemWatcher _fileWatcher;
 
         // 控制台事件处理委托
         private delegate bool HandlerRoutine(CtrlTypes ctrlType);
@@ -45,6 +47,13 @@ namespace ScannerCLI
         {
             try
             {
+                // 检查启动时是否有cancel文件
+                if (CheckForCancelFile())
+                {
+                    Console.WriteLine("Cancel file detected at startup. Exiting.");
+                    return;
+                }
+
                 // 设置Ctrl+C和其他控制台事件的处理
                 SetupConsoleCancellation();
 
@@ -138,8 +147,70 @@ namespace ScannerCLI
                 // 清理控制台事件处理器
                 CleanupConsoleCancellation();
 
+                // 清理文件监视器
+                CleanupFileWatcher();
+
                 // 给一点时间让硬件释放
                 await Task.Delay(1000);
+            }
+        }
+
+        private static bool CheckForCancelFile()
+        {
+            try
+            {
+                return File.Exists(_cancelFilePath);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void SetupFileWatcher()
+        {
+            try
+            {
+                _fileWatcher = new FileSystemWatcher
+                {
+                    Path = AppDomain.CurrentDomain.BaseDirectory,
+                    Filter = "cancel",
+                    EnableRaisingEvents = true
+                };
+
+                _fileWatcher.Created += (sender, e) =>
+                {
+                    Console.WriteLine("\nCancel file detected. Cancelling scan...");
+                    _cancellationTokenSource?.Cancel();
+
+                    // 立即尝试停止扫描
+                    Task.Run(async () => await ForceStopScannerAsync());
+                };
+
+                _fileWatcher.Changed += (sender, e) =>
+                {
+                    Console.WriteLine("\nCancel file modified. Cancelling scan...");
+                    _cancellationTokenSource?.Cancel();
+
+                    // 立即尝试停止扫描
+                    Task.Run(async () => await ForceStopScannerAsync());
+                };
+
+                Console.WriteLine($"Watching for cancel file at: {_cancelFilePath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not set up file watcher: {ex.Message}");
+            }
+        }
+
+        private static void CleanupFileWatcher()
+        {
+            if (_fileWatcher != null)
+            {
+                _fileWatcher.EnableRaisingEvents = false;
+                _fileWatcher.Dispose();
+                _fileWatcher = null;
             }
         }
 
@@ -245,8 +316,6 @@ namespace ScannerCLI
                                 try { config.MaxNumberOfPages = 1; } catch { } // 限制页数
                             }
                         }
-                        Console.WriteLine("Sleep 2 seconds.");
-                        Thread.Sleep(2000);
                     }
                     catch (Exception ex)
                     {
@@ -560,6 +629,9 @@ namespace ScannerCLI
             Console.WriteLine("  -y, --height MM           Height of scan area in millimeters");
             Console.WriteLine("  -h, --help                Show this help message");
             Console.WriteLine();
+            Console.WriteLine("Cancel File Feature:");
+            Console.WriteLine("  Create a file named 'cancel' in the program directory to stop scanning");
+            Console.WriteLine();
             Console.WriteLine("Examples:");
             Console.WriteLine("  ScannerCLI -L");
             Console.WriteLine("  ScannerCLI -d \"HP Scanner\" -s flatbed -r 300 -f pdf -m Color -o C:\\Scans");
@@ -776,8 +848,12 @@ namespace ScannerCLI
                 Console.WriteLine($"Output Directory: {_options.OutputDirectory}");
 
             Console.WriteLine();
-            Console.WriteLine("Press Ctrl+C to cancel the scan at any time.");
+            Console.WriteLine("Press Ctrl+C or create a 'cancel' file in the program directory to stop the scan.");
+            Console.WriteLine($"Cancel file path: {_cancelFilePath}");
             Console.WriteLine();
+
+            // 设置文件监视器来检测cancel文件的创建
+            SetupFileWatcher();
 
             // Configure scanner
             ConfigureScanner();
