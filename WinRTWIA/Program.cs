@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
@@ -18,11 +19,35 @@ namespace ScannerCLI
         private static ImageScanner _scanner;
         private static CancellationTokenSource _cancellationTokenSource;
         private static CommandLineOptions _options = new CommandLineOptions();
+        private static ConsoleCancelEventHandler _cancelHandler;
+        private static HandlerRoutine _consoleCtrlHandler;
+        private static bool _isScanning = false;
+        private static SemaphoreSlim _scanLock = new SemaphoreSlim(1, 1);
+
+        // 控制台事件处理委托
+        private delegate bool HandlerRoutine(CtrlTypes ctrlType);
+
+        // 控制台事件类型
+        private enum CtrlTypes
+        {
+            CTRL_C_EVENT = 0,
+            CTRL_BREAK_EVENT = 1,
+            CTRL_CLOSE_EVENT = 2,
+            CTRL_LOGOFF_EVENT = 5,
+            CTRL_SHUTDOWN_EVENT = 6
+        }
+
+        // 导入Windows API函数来设置控制台事件处理器
+        [DllImport("Kernel32")]
+        private static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
 
         static async Task Main(string[] args)
         {
             try
             {
+                // 设置Ctrl+C和其他控制台事件的处理
+                SetupConsoleCancellation();
+
                 // Parse command line arguments
                 if (!ParseArguments(args))
                 {
@@ -93,6 +118,10 @@ namespace ScannerCLI
                 // Perform scan
                 await PerformScanAsync();
             }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("\nScan cancelled by user.");
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error: {ex.Message}");
@@ -100,6 +129,137 @@ namespace ScannerCLI
                 {
                     Console.WriteLine($"Inner error: {ex.InnerException.Message}");
                 }
+            }
+            finally
+            {
+                // 确保释放扫描仪资源
+                await ForceStopScannerAsync();
+
+                // 清理控制台事件处理器
+                CleanupConsoleCancellation();
+
+                // 给一点时间让硬件释放
+                await Task.Delay(1000);
+            }
+        }
+
+        private static void SetupConsoleCancellation()
+        {
+            // 创建取消令牌源
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            // 设置.NET的控制台取消事件处理器
+            _cancelHandler = (sender, e) =>
+            {
+                Console.WriteLine("\nCtrl+C pressed. Cancelling scan...");
+                e.Cancel = true; // 阻止进程立即退出
+                _cancellationTokenSource?.Cancel();
+
+                // 立即尝试停止扫描
+                Task.Run(async () => await ForceStopScannerAsync());
+            };
+            Console.CancelKeyPress += _cancelHandler;
+
+            // 设置原生控制台事件处理器（处理窗口关闭等）
+            _consoleCtrlHandler = new HandlerRoutine(ConsoleCtrlHandler);
+            SetConsoleCtrlHandler(_consoleCtrlHandler, true);
+        }
+
+        private static void CleanupConsoleCancellation()
+        {
+            if (_cancelHandler != null)
+            {
+                Console.CancelKeyPress -= _cancelHandler;
+            }
+
+            if (_consoleCtrlHandler != null)
+            {
+                SetConsoleCtrlHandler(_consoleCtrlHandler, false);
+            }
+
+            _cancellationTokenSource?.Dispose();
+            _scanLock?.Dispose();
+        }
+
+        private static bool ConsoleCtrlHandler(CtrlTypes ctrlType)
+        {
+            switch (ctrlType)
+            {
+                case CtrlTypes.CTRL_C_EVENT:
+                case CtrlTypes.CTRL_BREAK_EVENT:
+                case CtrlTypes.CTRL_CLOSE_EVENT:
+                case CtrlTypes.CTRL_LOGOFF_EVENT:
+                case CtrlTypes.CTRL_SHUTDOWN_EVENT:
+                    Console.WriteLine($"\nReceived termination signal ({ctrlType}). Cancelling scan...");
+                    _cancellationTokenSource?.Cancel();
+
+                    // 立即尝试停止扫描
+                    Task.Run(async () => await ForceStopScannerAsync()).Wait(3000);
+
+                    return true; // 事件已处理
+            }
+            return false;
+        }
+
+        private static async Task ForceStopScannerAsync()
+        {
+            if (!_isScanning) return;
+
+            if (!await _scanLock.WaitAsync(0))
+            {
+                Console.WriteLine("Already stopping scanner...");
+                return;
+            }
+
+            try
+            {
+                Console.WriteLine("Force stopping scanner...");
+
+                if (_scanner != null)
+                {
+                    try
+                    {
+                        // 尝试取消当前扫描
+                        _cancellationTokenSource?.Cancel();
+
+                        // 对于某些扫描仪，需要重置配置
+                        if (_scanner.IsScanSourceSupported(ImageScannerScanSource.Flatbed))
+                        {
+                            var config = _scanner.FlatbedConfiguration;
+                            if (config != null)
+                            {
+                                // 尝试重置配置
+                                try { config.ColorMode = ImageScannerColorMode.Color; } catch { }
+                                try { config.DesiredResolution = new ImageScannerResolution { DpiX = 200, DpiY = 200 }; } catch { }
+                            }
+                        }
+
+                        if (_scanner.IsScanSourceSupported(ImageScannerScanSource.Feeder))
+                        {
+                            var config = _scanner.FeederConfiguration;
+                            if (config != null)
+                            {
+                                // 尝试重置配置
+                                try { config.ColorMode = ImageScannerColorMode.Color; } catch { }
+                                try { config.DesiredResolution = new ImageScannerResolution { DpiX = 200, DpiY = 200 }; } catch { }
+                                try { config.MaxNumberOfPages = 1; } catch { } // 限制页数
+                            }
+                        }
+                        Console.WriteLine("Sleep 2 seconds.");
+                        Thread.Sleep(2000);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error stopping scanner: {ex.Message}");
+                    }
+                }
+
+                _isScanning = false;
+                Console.WriteLine("Scanner stopped.");
+            }
+            finally
+            {
+                _scanLock.Release();
             }
         }
 
@@ -616,6 +776,8 @@ namespace ScannerCLI
                 Console.WriteLine($"Output Directory: {_options.OutputDirectory}");
 
             Console.WriteLine();
+            Console.WriteLine("Press Ctrl+C to cancel the scan at any time.");
+            Console.WriteLine();
 
             // Configure scanner
             ConfigureScanner();
@@ -640,7 +802,7 @@ namespace ScannerCLI
             }
 
             // Start scanning
-            _cancellationTokenSource = new CancellationTokenSource();
+            _isScanning = true;
 
             try
             {
@@ -649,54 +811,79 @@ namespace ScannerCLI
                 ImageScannerScanSource scanSource = _options.Source == "flatbed"
                     ? ImageScannerScanSource.Flatbed
                     : ImageScannerScanSource.Feeder;
-                
+
                 var progress = new Progress<uint>(pageCount =>
                 {
+                    // 检查是否已经取消
+                    if (_cancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        throw new OperationCanceledException(_cancellationTokenSource.Token);
+                    }
                     Console.WriteLine($"Scanned {pageCount} page(s)...");
                 });
 
-                var scanResult = await _scanner.ScanFilesToFolderAsync(
-                    scanSource,
-                    outputFolder
-                ).AsTask(_cancellationTokenSource.Token, progress);
-
-                // Display results
-                if (scanResult.ScannedFiles.Count > 0)
+                // 使用超时机制，避免无限等待
+                using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5)))
+                using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    _cancellationTokenSource.Token, timeoutCts.Token))
                 {
-                    Console.WriteLine($"\nScan completed! Total {scanResult.ScannedFiles.Count} page(s) scanned.");
+                    var scanResult = await _scanner.ScanFilesToFolderAsync(
+                        scanSource,
+                        outputFolder
+                    ).AsTask(linkedCts.Token, progress);
 
-                    for (int i = 0; i < scanResult.ScannedFiles.Count; i++)
+                    // Display results
+                    if (scanResult.ScannedFiles.Count > 0)
                     {
-                        var file = scanResult.ScannedFiles[i];
-                        Console.WriteLine($"File {i + 1}: {file.Name}");
+                        Console.WriteLine($"\nScan completed! Total {scanResult.ScannedFiles.Count} page(s) scanned.");
 
-                        try
+                        for (int i = 0; i < scanResult.ScannedFiles.Count; i++)
                         {
-                            var properties = await file.GetBasicPropertiesAsync();
-                            Console.WriteLine($"  Size: {FormatFileSize(properties.Size)}");
+                            var file = scanResult.ScannedFiles[i];
+                            Console.WriteLine($"File {i + 1}: {file.Name}");
+
+                            try
+                            {
+                                var properties = await file.GetBasicPropertiesAsync();
+                                Console.WriteLine($"  Size: {FormatFileSize(properties.Size)}");
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
-                }
-                else
-                {
-                    Console.WriteLine("Scan completed, but no files were obtained.");
+                    else
+                    {
+                        Console.WriteLine("Scan completed, but no files were obtained.");
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
-                Console.WriteLine("Scan cancelled.");
+                Console.WriteLine("\nScan cancelled.");
+
+                // 强制停止扫描仪
+                await ForceStopScannerAsync();
+
+                throw; // 重新抛出，让上层处理
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Scan failed: {ex.Message}");
+
+                // 强制停止扫描仪
+                await ForceStopScannerAsync();
+
                 throw;
+            }
+            finally
+            {
+                _isScanning = false;
             }
         }
 
         private static void ConfigureScanner()
         {
-            Console.WriteLine($"Configuring");
+            Console.WriteLine("Configuring scanner...");
+
             // Set scan source
             if (_options.Source == "flatbed")
             {
@@ -706,13 +893,14 @@ namespace ScannerCLI
             {
                 ConfigureFeeder();
             }
-            Console.WriteLine($"Configure Done");
+
+            Console.WriteLine("Scanner configuration completed.");
         }
 
         private static void ConfigureFlatbed()
         {
             var flatbedConfig = _scanner.FlatbedConfiguration;
-            Console.WriteLine("configure format");
+
             // Set file format
             try
             {
@@ -723,7 +911,7 @@ namespace ScannerCLI
                 Console.WriteLine($"Warning: Could not set format: {ex.Message}");
                 flatbedConfig.Format = ImageScannerFormat.DeviceIndependentBitmap;
             }
-            Console.WriteLine("configure color");
+
             // Set color mode
             try
             {
@@ -733,7 +921,7 @@ namespace ScannerCLI
             {
                 Console.WriteLine($"Warning: Could not set color mode: {ex.Message}");
             }
-            Console.WriteLine("configure resolution");
+
             // Set resolution
             try
             {
@@ -753,8 +941,6 @@ namespace ScannerCLI
             {
                 try
                 {
-                    // 将对比度值从 -100..100 映射到实际的对比度范围
-                    // 注意：实际范围可能因扫描仪而异，这里使用相对调整
                     flatbedConfig.Contrast = NormalizeEnhancementValue(_options.Contrast);
                     Console.WriteLine($"Applied contrast: {flatbedConfig.Contrast}");
                 }
@@ -769,7 +955,6 @@ namespace ScannerCLI
             {
                 try
                 {
-                    // 将亮度值从 -100..100 映射到实际的亮度范围
                     flatbedConfig.Brightness = NormalizeEnhancementValue(_options.Brightness);
                     Console.WriteLine($"Applied brightness: {flatbedConfig.Brightness}");
                 }
@@ -782,42 +967,45 @@ namespace ScannerCLI
             // Set scan area if specified
             if (_options.ScanAreaSpecified)
             {
-                // 将毫米转换为英寸（1英寸 = 25.4毫米）
-                float dpiX = _options.Resolution;
-                float dpiY = _options.Resolution;
+                try
+                {
+                    // 将毫米转换为英寸（1英寸 = 25.4毫米）
+                    float leftInch = _options.ScanAreaLeft / 25.4f;
+                    float topInch = _options.ScanAreaTop / 25.4f;
+                    float widthInch = _options.ScanAreaWidth / 25.4f;
+                    float heightInch = _options.ScanAreaHeight / 25.4f;
 
-                // 计算像素值：毫米 * DPI / 25.4
-                float leftInch = _options.ScanAreaLeft / 25.4f;
-                float topInch = _options.ScanAreaTop / 25.4f;
-                float widthInch = _options.ScanAreaWidth / 25.4f;
-                float heightInch = _options.ScanAreaHeight / 25.4f;
-
-                flatbedConfig.SelectedScanRegion = new Rect(
-                    leftInch,
-                    topInch,
-                    widthInch,
-                    heightInch
-                );
-                Console.WriteLine($"Scan region in inches: Left={leftInch}, Top={topInch}, " +
-                                $"Width={widthInch}, Height={heightInch}");
+                    flatbedConfig.SelectedScanRegion = new Rect(
+                        leftInch,
+                        topInch,
+                        widthInch,
+                        heightInch
+                    );
+                    Console.WriteLine($"Scan region in inches: Left={leftInch:F3}, Top={topInch:F3}, " +
+                                    $"Width={widthInch:F3}, Height={heightInch:F3}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not set scan region: {ex.Message}");
+                }
             }
         }
 
         private static void ConfigureFeeder()
         {
             var feederConfig = _scanner.FeederConfiguration;
-            Console.WriteLine("configure format");
+
             // Set file format
             try
             {
                 feederConfig.Format = ConvertFormat(_options.Format);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Console.WriteLine($"Warning: Could not set format: {ex.Message}");
                 feederConfig.Format = ImageScannerFormat.DeviceIndependentBitmap;
             }
-            Console.WriteLine("configure color");
+
             // Set color mode
             try
             {
@@ -827,19 +1015,20 @@ namespace ScannerCLI
             {
                 Console.WriteLine($"Warning: Could not set color mode: {ex.Message}");
             }
-            Console.WriteLine("configure resolution");
+
             // Set resolution
-            try {
+            try
+            {
                 feederConfig.DesiredResolution = new ImageScannerResolution
                 {
                     DpiX = (uint)_options.Resolution,
                     DpiY = (uint)_options.Resolution
                 };
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 Console.WriteLine($"Warning: Could not set dpi: {ex.Message}");
             }
-            
 
             // Set contrast if specified
             if (_options.Contrast != 0)
@@ -874,12 +1063,7 @@ namespace ScannerCLI
             {
                 try
                 {
-                    //_scanner.FeederConfiguration.PageSize = Windows.Graphics.Printing.PrintMediaSize.;
                     // 将毫米转换为英寸（1英寸 = 25.4毫米）
-                    float dpiX = _options.Resolution;
-                    float dpiY = _options.Resolution;
-
-                    // 计算像素值：毫米 * DPI / 25.4
                     float leftInch = _options.ScanAreaLeft / 25.4f;
                     float topInch = _options.ScanAreaTop / 25.4f;
                     float widthInch = _options.ScanAreaWidth / 25.4f;
@@ -891,16 +1075,14 @@ namespace ScannerCLI
                         widthInch,
                         heightInch
                     );
-                    Console.WriteLine($"Scan region in inches: Left={leftInch}, Top={topInch}, " +
-                                $"Width={widthInch}, Height={heightInch}");
+                    Console.WriteLine($"Scan region in inches: Left={leftInch:F3}, Top={topInch:F3}, " +
+                                    $"Width={widthInch:F3}, Height={heightInch:F3}");
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Warning: Could not set scan region: {ex.Message}");
                 }
-                
             }
-            
 
             // Enable multi-page scanning
             feederConfig.MaxNumberOfPages = 0; // 0 means scan all available pages
