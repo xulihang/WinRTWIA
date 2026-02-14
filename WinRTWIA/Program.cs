@@ -792,7 +792,6 @@ namespace ScannerCLI
                 float widthInch = _options.ScanAreaWidth / 25.4f;
                 float heightInch = _options.ScanAreaHeight / 25.4f;
 
-                // 设置扫描区域（以像素为单位）
                 flatbedConfig.SelectedScanRegion = new Rect(
                     leftInch,
                     topInch,
@@ -873,31 +872,35 @@ namespace ScannerCLI
             // Set scan area if specified
             if (_options.ScanAreaSpecified)
             {
-                // 将毫米转换为英寸（1英寸 = 25.4毫米）
-                float dpiX = _options.Resolution;
-                float dpiY = _options.Resolution;
+                try
+                {
+                    //_scanner.FeederConfiguration.PageSize = Windows.Graphics.Printing.PrintMediaSize.;
+                    // 将毫米转换为英寸（1英寸 = 25.4毫米）
+                    float dpiX = _options.Resolution;
+                    float dpiY = _options.Resolution;
 
-                // 计算像素值：毫米 * DPI / 25.4
-                float leftInch = _options.ScanAreaLeft / 25.4f;
-                float topInch = _options.ScanAreaTop / 25.4f;
-                float widthInch = _options.ScanAreaWidth / 25.4f;
-                float heightInch = _options.ScanAreaHeight / 25.4f;
+                    // 计算像素值：毫米 * DPI / 25.4
+                    float leftInch = _options.ScanAreaLeft / 25.4f;
+                    float topInch = _options.ScanAreaTop / 25.4f;
+                    float widthInch = _options.ScanAreaWidth / 25.4f;
+                    float heightInch = _options.ScanAreaHeight / 25.4f;
 
-                uint leftPixels = (uint)(leftInch * dpiX);
-                uint topPixels = (uint)(topInch * dpiY);
-                uint widthPixels = (uint)(widthInch * dpiX);
-                uint heightPixels = (uint)(heightInch * dpiY);
-
-                // 设置扫描区域（以像素为单位）
-                feederConfig.SelectedScanRegion = new Rect(
-                    leftPixels,
-                    topPixels,
-                    widthPixels,
-                    heightPixels
-                );
-                Console.WriteLine($"Scan region in pixels: Left={leftPixels}, Top={topPixels}, " +
-                                $"Width={widthPixels}, Height={heightPixels}");
+                    feederConfig.SelectedScanRegion = new Rect(
+                        leftInch,
+                        topInch,
+                        widthInch,
+                        heightInch
+                    );
+                    Console.WriteLine($"Scan region in inches: Left={leftInch}, Top={topInch}, " +
+                                $"Width={widthInch}, Height={heightInch}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not set scan region: {ex.Message}");
+                }
+                
             }
+            
 
             // Enable multi-page scanning
             feederConfig.MaxNumberOfPages = 0; // 0 means scan all available pages
